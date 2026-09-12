@@ -1,0 +1,42 @@
+# Python and local environments
+.venv/
+venv/
+env/
+__pycache__/
+*.py
+!app.py
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Local application files
+uploads/*
+!uploads/.gitkeep
+*.log
+.env
+.env.*
+
+# Private measurements and billing documents
+*.csv
+*.pdf
+*.odt
+*.zip
+
+# Local backups and downloaded source material
+05-2026/
+kopia zapasowa przed modyfikacją wybór referencyjnej/
+Tauron cenniki/
+app copy przed zmianą przez gemini na 2026.py
+
+# Build and packaging output
+build/
+dist/
+*.spec
+*.egg-info/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

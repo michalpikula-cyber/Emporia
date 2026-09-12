@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalkulator Kosztów Energii Tauron</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .card-hover {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: #667eea;
+            background-color: #f8f9fa;
+        }
+        
+        .upload-area.dragover {
+            border-color: #667eea;
+            background-color: #e3f2fd;
+        }
+        
+        .tariff-card {
+            border-left: 4px solid #667eea;
+        }
+        
+        .tariff-card.cheapest {
+            border-left-color: #28a745;
+            background-color: #f8fff9;
+        }
+        
+        .loading-spinner {
+            display: none;
+        }
+        
+        .results-section {
+            display: none;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .comparison-table {
+            font-size: 0.9rem;
+        }
+
+        .comparison-table .table-success {
+            background-color: #d4edda !important;
+        }
+
+        .comparison-table .table-warning {
+            background-color: #fff3cd !important;
+        }
+
+        .comparison-table .table-danger {
+            background-color: #f8d7da !important;
+        }
+
+        .tariff-info {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .tariff-description {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="gradient-bg py-4">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="h2 fw-bold mb-2">
+                        <i class="fas fa-bolt me-2"></i>
+                        Kalkulator Kosztów Energii Tauron
+                    </h1>
+                    <p class="mb-0">
+                        Analizuj swoje zużycie energii i znajdź najtańszą taryfę energetyczną. 
+                        Porównaj koszty we wszystkich dostępnych taryfach Tauron.
+                    </p>
+                </div>
+                <div class="col-md-4 text-center">
+                    <a href="/tariffs" class="btn btn-light me-2">
+                        <i class="fas fa-cog me-2"></i>
+                        Zarządzaj taryfami
+                    </a>
+                    <i class="fas fa-chart-line fa-4x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container my-5">
+        <!-- Tariff Information -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="tariff-info">
+                    <h5 class="mb-3">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Dostępne taryfy Tauron
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><strong>G11</strong> - stała cena całą dobę</li>
+                                <li><strong>G12</strong> - dwustrefowa (dzień/noc)</li>
+                                <li><strong>G12w</strong> - weekendowa (szczyt/pozaszczyt)</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><strong>G13</strong> - trzystrefowa (3 różne ceny)</li>
+                                <li><strong>G13s</strong> - dynamiczna (zmienne ceny godzinowe)</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="alert alert-info mt-3 mb-0">
+                        <small>
+                            <i class="fas fa-calendar-alt me-1"></i>
+                            <strong>Zmiana taryfy:</strong> Raz na 12 miesięcy od ostatniej zmiany. Wymaga złożenia wniosku.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card card-hover">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-upload me-2"></i>
+                            Wgraj plik z danymi Emporia Vue
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div class="upload-area mb-4" id="uploadArea">
+                                <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                                <h5>Przeciągnij plik CSV tutaj lub kliknij, aby wybrać</h5>
+                                <p class="text-muted">Obsługiwane formaty: CSV (maksymalnie 16MB)</p>
+                                <input type="file" id="fileInput" name="file" accept=".csv" class="d-none">
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="startDate" class="form-label">Data początkowa (opcjonalna)</label>
+                                    <input type="date" class="form-control" id="startDate" name="start_date">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="endDate" class="form-label">Data końcowa (opcjonalna)</label>
+                                    <input type="date" class="form-control" id="endDate" name="end_date">
+                                </div>
+                                <!-- DODAJ TĘ KOLUMNĘ -->
+                                <div class="col-md-4">
+                                    <label for="referenceTariff" class="form-label">Taryfa do porównania</label>
+                                    <select class="form-control" id="referenceTariff" name="reference_tariff">
+                                        <option value="G11" selected>G11 - Jednolita</option>
+                                        <option value="G12">G12 - Dwustrefowa</option>
+                                        <option value="G12w">G12w - Weekendowa</option>
+                                        <option value="G13">G13 - Trzystrefowa</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="text-center">
+                                <button type="submit" class="btn btn-primary btn-lg px-5">
+                                    <i class="fas fa-calculator me-2"></i>
+                                    Analizuj dane
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <!-- Loading Spinner -->
+                        <div class="loading-spinner text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Ładowanie...</span>
+                            </div>
+                            <p class="mt-3">Analizowanie danych...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <!-- Summary Cards -->
+            <div class="row mb-4" id="summaryCards">
+                <!-- Cards will be populated by JavaScript -->
+            </div>
+
+            <!-- Tariff Comparison -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="chart-container">
+                        <h4 class="mb-3">
+                            <i class="fas fa-chart-bar me-2"></i>
+                            Porównanie kosztów taryf
+                        </h4>
+                        <div id="costsChart"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Tariff Information -->
+            <div class="row mb-4" id="tariffDetails">
+                <!-- Tariff cards will be populated by JavaScript -->
+            </div>
+
+            <!-- Usage Analysis Charts -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="chart-container">
+                        <h4 class="mb-3">
+                            <i class="fas fa-clock me-2"></i>
+                            Analiza zużycia w ciągu doby
+                        </h4>
+                        <div id="hourlyChart"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Zone Usage Charts -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="chart-container">
+                        <h5 class="text-center mb-3">Taryfa G12</h5>
+                        <div id="g12Chart"></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="chart-container">
+                        <h5 class="text-center mb-3">Taryfa G12w</h5>
+                        <div id="g12wChart"></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="chart-container">
+                        <h5 class="text-center mb-3">Taryfa G13</h5>
+                        <div id="g13Chart"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommendations and Detailed Comparison -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card border-success">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">
+                                <i class="fas fa-lightbulb me-2"></i>
+                                Rekomendacje i szczegółowe porównanie
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="recommendations" class="mb-4">
+                                <!-- Recommendations will be populated by JavaScript -->
+                            </div>
+                            
+                            <h6 class="mb-3">
+                                <i class="fas fa-table me-2"></i>
+                                Szczegółowe porównanie wszystkich taryf
+                            </h6>
+                            <div class="table-responsive">
+                                <table class="table table-striped comparison-table" id="comparisonTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Taryfa</th>
+                                            <th>Opis</th>
+                                            <th>Koszt całkowity</th>
+                                            <th>Różnica vs G11</th>
+                                            <th>Oszczędność %</th>
+                                            <th>Średnia cena/kWh</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Table content will be populated by JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-0">
+                <i class="fas fa-bolt me-2"></i>
+                Kalkulator Kosztów Energii Tauron &copy; 2024
+            </p>
+            <small class="text-muted">
+                Narzędzie do analizy opłacalności taryf energetycznych na podstawie danych Emporia Vue
+            </small>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadForm = document.getElementById('uploadForm');
+        const loadingSpinner = document.querySelector('.loading-spinner');
+        const resultsSection = document.getElementById('resultsSection');
+
+        // Tariff descriptions - DOKŁADNE na podstawie dokumentów
+        const tariffDescriptions = {
+            'G11': 'Jednostrefowa - stała cena energii i dystrybucji przez całą dobę, wszystkie dni',
+            
+            'G12': 'Dwustrefowa - rozliczenie w strefie dziennej (6:00-13:00, 15:00-22:00) i nocnej (13:00-15:00, 22:00-6:00 + całe weekendy i święta)',
+            
+            'G12w': 'Dwustrefowa weekendowa - strefa szczytowa (dni robocze 6:00-13:00, 15:00-22:00) i pozaszczytowa (dni robocze 13:00-15:00, 22:00-6:00 + wszystkie godziny weekendów i świąt)',
+            
+            'G13': 'Trójstrefowa - rozliczenie w 3 strefach: przedpołudniowej (7:00-13:00), popołudniowej (lato 19:00-22:00, zima 16:00-21:00) i pozostałych godzinach (w tym wszystkie godziny weekendów i świąt)',
+            
+            'G13s': '"Tanie Godziny" - dynamiczna taryfa ze zmiennymi cenami w zależności od godziny, pory roku (lato/zima) i typu dnia (roboczy/wolny). Wymaga licznika zdalnego odczytu.',
+        };
+
+        // Drag and drop functionality
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                updateFileName(files[0].name);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                updateFileName(e.target.files[0].name);
+            }
+        });
+
+        function updateFileName(fileName) {
+            const uploadText = uploadArea.querySelector('h5');
+            uploadText.innerHTML = `<i class="fas fa-file-csv me-2"></i>Wybrany plik: ${fileName}`;
+        }
+
+        // Form submission
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!fileInput.files[0]) {
+                alert('Proszę wybrać plik CSV');
+                return;
+            }
+
+            const formData = new FormData(uploadForm);
+            
+            // Show loading spinner
+            loadingSpinner.style.display = 'block';
+            resultsSection.style.display = 'none';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (result.error) {
+                    alert('Błąd: ' + result.error);
+                } else {
+                    displayResults(result);
+                }
+            } catch (error) {
+                alert('Wystąpił błąd podczas przesyłania pliku: ' + error.message);
+            } finally {
+                loadingSpinner.style.display = 'none';
+            }
+        });
+
+        function displayResults(data) {
+            // Show results section
+            resultsSection.style.display = 'block';
+            
+            // Scroll to results
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+            
+            // ========== USUŃ WSZYSTKIE POPRZEDNIE ALERTY ==========
+            const existingAlerts = resultsSection.querySelectorAll('.alert');
+            existingAlerts.forEach(alert => alert.remove());
+            
+            // Wyświetl informację o jakości danych (PIERWSZA, przed summary)
+            displayDataQualityInfo(data);
+
+            // Display summary cards
+            displaySummaryCards(data);
+            
+            // Display tariff details
+            displayTariffDetails(data);
+            
+            // Display charts
+            displayCharts(data);
+            
+            // Display recommendations and comparison
+            displayRecommendationsAndComparison(data);
+        }
+
+        function displayDataQualityInfo(data) {
+            const anomalies = data.data_quality;
+            
+            if (!anomalies.has_anomalies) {
+                const html = `
+                    <div class="alert alert-success mt-3">
+                        <h6><i class="fas fa-check-circle me-2"></i>Dane wysokiej jakości</h6>
+                        <p class="mb-0">Nie wykryto anomalii w danych. Kompletność: <strong>${anomalies.data_completeness}%</strong></p>
+                    </div>
+                `;
+                document.getElementById('resultsSection').insertAdjacentHTML('afterbegin', html);
+                return;
+            }
+            
+            // Jeśli są anomalie
+            let anomaliesHtml = `
+                <div class="alert alert-warning mt-3">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Uwaga: anomalie w danych</h6>
+                    <p>Wykryto problemy z jakością danych wpływające na <strong>${anomalies.total_anomaly_hours.toFixed(1)} godzin</strong> (${anomalies.data_completeness}% kompletności).</p>
+            `;
+            
+            // Podsumowanie typów anomalii
+            if (anomalies.time_gaps.length > 0) {
+                anomaliesHtml += `
+                    <p><strong>Brakujące dane:</strong> ${anomalies.time_gaps.length} okresów</p>
+                `;
+            }
+            
+            if (anomalies.low_consumption_periods.length > 0) {
+                anomaliesHtml += `
+                    <p><strong>Podejrzanie niskie zużycie:</strong> ${anomalies.low_consumption_periods.length} okresów</p>
+                `;
+            }
+            
+            // Szczegóły jeśli nie za dużo
+            const total_anomaly_periods = anomalies.time_gaps.length + anomalies.low_consumption_periods.length;
+            
+            if (total_anomaly_periods <= 5) {
+                anomaliesHtml += `<p class="mb-1"><small><strong>Szczegóły anomalii:</strong></small></p><ul class="mb-0">`;
+                
+                // Dziury czasowe
+                anomalies.time_gaps.forEach(gap => {
+                    anomaliesHtml += `
+                        <li>
+                            <small>
+                                <i class="fas fa-clock text-danger me-1"></i>
+                                <strong>Brak danych:</strong> ${gap.start} - ${gap.end} (${gap.hours}h)
+                            </small>
+                        </li>
+                    `;
+                });
+                
+                // Niskie zużycie
+                anomalies.low_consumption_periods.forEach(period => {
+                    anomaliesHtml += `
+                        <li>
+                            <small>
+                                <i class="fas fa-battery-quarter text-warning me-1"></i>
+                                <strong>Niskie zużycie (${period.avg_usage} kWh/h):</strong> ${period.start} - ${period.end} (${period.hours}h)
+                            </small>
+                        </li>
+                    `;
+                });
+                
+                anomaliesHtml += `</ul>`;
+            } else {
+                anomaliesHtml += `
+                    <p class="mb-0">
+                        <small><i class="fas fa-info-circle me-1"></i>
+                        Zbyt wiele okresów z anomaliami do wyświetlenia. Sprawdź czy urządzenie Emporia miało stabilne połączenie.</small>
+                    </p>
+                `;
+            }
+            
+            anomaliesHtml += `
+                <div class="alert alert-info mt-2">
+                    <small><i class="fas fa-info-circle me-1"></i>
+                    <strong>Wpływ na obliczenia:</strong> Okresy z anomaliami mogą zaniżać całkowite zużycie. 
+                    Wyniki mogą być niedokładne. Rozważ wykluczenie tych okresów z analizy.</small>
+                </div>
+            </div>
+            `;
+            
+            // Przycisk do wykluczania anomalii
+            anomaliesHtml += `
+                <div class="alert alert-secondary">
+                    <h6><i class="fas fa-filter me-2"></i>Opcje poprawy danych</h6>
+                    <p class="mb-2">Możesz wykluczyć okresy z anomaliami z analizy:</p>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="excludeAnomalies('time_gaps')">
+                            <i class="fas fa-clock-slash me-1"></i>Wyklucz braki danych
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" onclick="excludeAnomalies('low_consumption')">
+                            <i class="fas fa-battery-quarter me-1"></i>Wyklucz niskie zużycie
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="excludeAnomalies('all')">
+                            <i class="fas fa-filter me-1"></i>Wyklucz wszystkie anomalie
+                        </button>
+                    </div>
+                    <p class="mt-2 mb-0"><small>Po wykluczeniu danych konieczne będzie ponowne przesłanie pliku.</small></p>
+                </div>
+            `;
+            
+            document.getElementById('resultsSection').insertAdjacentHTML('afterbegin', anomaliesHtml);
+        }
+
+        function displayDataQualityInfo(data) {
+            const problems = data.data_quality;
+            
+            if (!problems.has_problems) {
+                const html = `
+                    <div class="alert alert-success">
+                        <h6><i class="fas fa-check-circle me-2"></i>Dane w porządku</h6>
+                        <p class="mb-0">Kompletność danych: <strong>${problems.data_completeness}%</strong></p>
+                    </div>
+                `;
+                document.getElementById('resultsSection').insertAdjacentHTML('afterbegin', html);
+                return;
+            }
+            
+            // Jeśli są problemy - POKAŻ TYLKO NAJWAŻNIEJSZE
+            let problemsHtml = `
+                <div class="alert alert-warning">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Uwaga: problemy z danymi</h6>
+                    <p>Wykryto problemy wpływające na <strong>${problems.total_problem_hours.toFixed(1)} godzin</strong> (${problems.data_completeness}% kompletności).</p>
+            `;
+            
+            // Pokaż tylko 3 największe problemy
+            const topIssues = problems.main_issues.slice(0, 3);
+            
+            topIssues.forEach(issue => {
+                if (issue.type === 'low_usage') {
+                    problemsHtml += `
+                        <div class="mb-2">
+                            <small>
+                                <i class="fas fa-battery-quarter text-warning me-1"></i>
+                                <strong>Podejrzanie niskie zużycie:</strong> ${issue.start} - ${issue.end} 
+                                <span class="text-muted">(${issue.hours}h, średnio ${issue.avg_usage} kWh/h)</span>
+                            </small>
+                        </div>
+                    `;
+                } else {
+                    problemsHtml += `
+                        <div class="mb-2">
+                            <small>
+                                <i class="fas fa-clock text-danger me-1"></i>
+                                <strong>Brak danych:</strong> ${issue.start} - ${issue.end} 
+                                <span class="text-muted">(${issue.hours}h)</span>
+                            </small>
+                        </div>
+                    `;
+                }
+            });
+            
+            // Jeśli więcej problemów, pokaż tylko liczbę
+            if (problems.main_issues.length > 3) {
+                problemsHtml += `
+                    <div class="mb-2">
+                        <small class="text-muted">... i ${problems.main_issues.length - 3} innych okresów z problemami</small>
+                    </div>
+                `;
+            }
+            
+            problemsHtml += `
+                <div class="mt-2">
+                    <small><i class="fas fa-info-circle me-1"></i>
+                    <strong>Wpływ:</strong> Okresy z problemami mogą zaniżać całkowite zużycie. 
+                    Upewnij się że urządzenie Emporia miało stabilne połączenie.</small>
+                </div>
+            </div>
+            `;
+            
+            document.getElementById('resultsSection').insertAdjacentHTML('afterbegin', problemsHtml);
+        }
+
+        // Funkcja do wykluczania anomalii (do implementacji)
+        function excludeAnomalies(type) {
+            alert('Ta funkcja wymagałaby przetworzenia pliku po stronie klienta. Na razie pokaż informację użytkownikowi.');
+            
+            let message = '';
+            switch(type) {
+                case 'time_gaps':
+                    message = 'Aby wykluczyć okresy z brakującymi danymi:\n1. Otwórz plik CSV w Excelu\n2. Usuń wiersze z brakującymi godzinami\n3. Zapisz i prześlij ponownie';
+                    break;
+                case 'low_consumption':
+                    message = 'Aby wykluczyć okresy z podejrzanie niskim zużyciem:\n1. Znajdź wiersze z zużyciem < 0.01 kWh/h\n2. Usuń je lub oznacz jako brak danych\n3. Zapisz i prześlij ponownie';
+                    break;
+                case 'all':
+                    message = 'Prześlij plik po ręcznym usunięciu wszystkich wierszy z anomaliami.';
+                    break;
+            }
+            
+            alert(message);
+        }
+
+
+        function displaySummaryCards(data) {
+            const summaryCards = document.getElementById('summaryCards');
+            summaryCards.innerHTML = `
+                <div class="col-md-3">
+                    <div class="card text-center card-hover">
+                        <div class="card-body">
+                            <i class="fas fa-calendar-alt fa-2x text-primary mb-2"></i>
+                            <h5>Okres analizy</h5>
+                            <p class="mb-0">${data.days_in_period} dni</p>
+                            <small class="text-muted">${data.period_start} - ${data.period_end}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center card-hover">
+                        <div class="card-body">
+                            <i class="fas fa-bolt fa-2x text-warning mb-2"></i>
+                            <h5>Całkowite zużycie</h5>
+                            <p class="mb-0 h4">${data.total_usage.toFixed(2)} kWh</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center card-hover">
+                        <div class="card-body">
+                            <i class="fas fa-trophy fa-2x text-success mb-2"></i>
+                            <h5>Najtańsza taryfa</h5>
+                            <p class="mb-0 h4 text-success">${data.cheapest_tariff}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center card-hover">
+                        <div class="card-body">
+                            <i class="fas fa-piggy-bank fa-2x text-info mb-2"></i>
+                            <h5>Oszczędność</h5>
+                            <p class="mb-0 h4 text-info">${data.savings_vs_reference.toFixed(2)} zł</p>
+                            <small class="text-muted">vs ${data.reference_tariff}</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 mt-3">
+                    <div class="card card-hover">
+                        <div class="card-body">
+                            <h5><i class="fas fa-chart-column text-primary me-2"></i>Zużycie według lat</h5>
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0 align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Rok</th>
+                                            <th>Zużycie zarejestrowane</th>
+                                            <th>Dni z odczytami</th>
+                                            <th>Pokrycie roku</th>
+                                            <th>Szacunek pełnego roku</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${(data.annual_usage || []).map(year => `
+                                            <tr>
+                                                <td><strong>${year.year}</strong></td>
+                                                <td>${year.observed_kwh.toFixed(2)} kWh</td>
+                                                <td>${year.days_with_data}</td>
+                                                <td>${year.coverage_percent.toFixed(1)}%</td>
+                                                <td>${year.annualized_kwh.toFixed(2)} kWh</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <small class="text-muted">Szacunek jest ekstrapolacją z dni z odczytami. Przy lukach traktuj go orientacyjnie.</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayTariffDetails(data) {
+            const tariffDetails = document.getElementById('tariffDetails');
+            let html = '';
+            
+            Object.entries(data.tariffs_data).forEach(([tariffName, tariffData]) => {
+                const isCheapest = tariffName === data.cheapest_tariff;
+                
+                // UŻYJ LEPSZYCH KOLORÓW:
+                // - Zwycięzca: ciemnozielony na białym
+                // - Reszta: jasnoniebieski na ciemnym
+                const headerClass = isCheapest ? 'bg-success text-white' : 'bg-primary text-white';
+                const textClass = isCheapest ? 'text-success' : '';
+                
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card tariff-card ${isCheapest ? 'cheapest border-success border-2' : ''} h-100">
+                            <div class="card-header ${headerClass}">
+                                <h6 class="mb-0">
+                                    Taryfa ${tariffName}
+                                    ${isCheapest ? '<i class="fas fa-crown ms-2 text-warning"></i>' : ''}
+                                </h6>
+                                <small class="${isCheapest ? 'text-light' : 'text-light'}">${tariffDescriptions[tariffName] || ''}</small>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <small class="text-muted">Energia czynna:</small>
+                                    <div>${tariffData.energy_cost.toFixed(2)} zł</div>
+                                </div>
+                                <div class="mb-2">
+                                    <small class="text-muted">Opłaty sieciowe:</small>
+                                    <div>${tariffData.ss_cost.toFixed(2)} zł</div>
+                                </div>
+                                <div class="mb-2">
+                                    <small class="text-muted">Opłaty stałe:</small>
+                                    <div>${tariffData.fixed_costs.toFixed(2)} zł</div>
+                                </div>
+                                <hr>
+                                <div class="fw-bold">
+                                    <small class="text-muted">Koszt całkowity:</small>
+                                    <div class="h6 ${textClass}">${tariffData.total_costs_brutto.toFixed(2)} zł</div>
+                                </div>
+                                ${isCheapest ? '<div class="mt-2"><span class="badge bg-success"><i class="fas fa-trophy me-1"></i>Najtańsza</span></div>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            tariffDetails.innerHTML = html;
+        }
+
+        function displayCharts(data) {
+            // Costs comparison chart - usuń JSON.parse
+            Plotly.newPlot('costsChart', data.charts.costs_comparison);
+            
+            // Hourly usage chart
+            Plotly.newPlot('hourlyChart', data.charts.hourly_usage);
+            
+            // Zone usage charts
+            Plotly.newPlot('g12Chart', data.charts.g12_usage);
+            Plotly.newPlot('g12wChart', data.charts.g12w_usage);
+            Plotly.newPlot('g13Chart', data.charts.g13_usage);
+        }
+
+        function displayRecommendationsAndComparison(data) {
+            const recommendations = document.getElementById('recommendations');
+            let html = '';
+            
+            if (data.cheapest_tariff === data.reference_tariff) {
+                html = `
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle me-2"></i>Taryfa ${data.reference_tariff} jest optymalna</h6>
+                        <p class="mb-0">Obecna taryfa ${data.reference_tariff} jest dla Ciebie najkorzystniejsza. Jeśli chcesz zmniejszyć koszty, rozważ zmianę godzin korzystania z energochłonnych urządzeń.</p>
+                    </div>
+                `;
+            } else {
+                html = `
+                    <div class="alert alert-success">
+                        <h6><i class="fas fa-lightbulb me-2"></i>Zalecana zmiana na taryfę ${data.cheapest_tariff}</h6>
+                        <p>Zmiana z ${data.reference_tariff} na ${data.cheapest_tariff} przyniesie oszczędność <strong>${data.savings_vs_reference.toFixed(2)} zł</strong>.</p>
+                `;
+                
+                // Dodaj porady specyficzne dla taryfy
+                if (data.cheapest_tariff === 'G12') {
+                    html += `
+                        <p class="mb-0 mt-2"><strong>Jak zwiększyć oszczędności w G12:</strong></p>
+                        <ul class="mb-0">
+                            <li><strong>Tańsza strefa nocna obejmuje:</strong>
+                                <ul>
+                                    <li>13:00-15:00 (w dni robocze)</li>
+                                    <li>22:00-6:00 (całą dobę)</li>
+                                    <li><strong>Całe weekendy i święta</strong> (wszystkie 24 godziny!)</li>
+                                </ul>
+                            </li>
+                            <li>Przesuwaj zużycie na godziny 22:00-6:00 i weekendy</li>
+                            <li>Unikaj godzin 6:00-13:00 i 15:00-22:00 w dni robocze</li>
+                        </ul>
+                    `;
+                } else if (data.cheapest_tariff === 'G12w') {
+                    html += `
+                        <p class="mb-0 mt-2"><strong>Jak zwiększyć oszczędności w G12w:</strong></p>
+                        <ul class="mb-0">
+                            <li><strong>Tańsza strefa pozaszczytowa obejmuje:</strong>
+                                <ul>
+                                    <li>13:00-15:00 i 22:00-6:00 (w dni robocze)</li>
+                                    <li><strong>Wszystkie godziny w soboty, niedziele i święta</strong></li>
+                                </ul>
+                            </li>
+                            <li>Planuj energochłonne czynności na weekendy</li>
+                            <li>W dni robocze korzystaj z okien 13:00-15:00 i po 22:00</li>
+                            <li>Unikaj godzin 6:00-13:00 i 15:00-22:00 w dni robocze</li>
+                        </ul>
+                    `;
+                } else if (data.cheapest_tariff === 'G13') {
+                    html += `
+                        <p class="mb-0 mt-2"><strong>Jak maksymalnie wykorzystać G13:</strong></p>
+                        <ul class="mb-0">
+                            <li><strong>NAJTAŃSZE (strefa "pozostałe"):</strong>
+                                <ul>
+                                    <li>Wszystkie godziny w <strong>soboty, niedziele i święta</strong></li>
+                                    <li>Godziny nocne w dni robocze (oprócz szczytów)</li>
+                                </ul>
+                            </li>
+                            <li><strong>ŚREDNIA CENA (strefa przedpołudniowa):</strong> 7:00-13:00 w dni robocze</li>
+                            <li><strong>NAJDROŻSZE (strefa popołudniowa):</strong>
+                                <ul>
+                                    <li>Lato (IV-IX): <strong>19:00-22:00</strong> w dni robocze</li>
+                                    <li>Zima (X-III): <strong>16:00-21:00</strong> w dni robocze</li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <div class="alert alert-warning mt-2">
+                            <small><i class="fas fa-lightbulb me-1"></i>
+                            <strong>Kluczowe:</strong> W G13 weekendy i święta są <strong>zawsze w najtańszej strefie</strong> - wykorzystaj to maksymalnie!</small>
+                        </div>
+                    `;
+                } else if (data.cheapest_tariff === 'G13s') {
+                    // JEDNA definicja - wybierz którą wersję wolisz:
+                    
+                    // Wersja 1: Jeśli G13s jest NAJTAŃSZA
+                    html += `
+                        <p class="mb-0 mt-2"><strong>Uwaga - G13s ma specjalne wymagania:</strong></p>
+                        <ul class="mb-0">
+                            <li><strong>Wymagany licznik zdalnego odczytu</strong> (darmowy przy zmianie taryfy)</li>
+                            <li><strong>Wymagana e-faktura</strong></li>
+                            <li><strong>1-miesięczny okres rozliczeniowy</strong> (nie można wybrać dłuższego)</li>
+                            <li><strong>Stała opłata handlowa:</strong> 19,10 zł netto/miesiąc (zamiast opłaty abonamentowej)</li>
+                        </ul>
+                        <div class="alert alert-info mt-2">
+                            <small><i class="fas fa-lightbulb me-1"></i>
+                            <strong>Strategia dla G13s:</strong> Przesuwaj zużycie na godziny 21:00-7:00 i weekendy. Unikaj szczytów: lato 7-9 & 17-21, zima 7-10 & 15-21.</small>
+                        </div>
+                    `;
+                }
+                
+                html += `</div>`;
+            }
+            
+            // DODATKOWO: Jeśli G13s NIE jest najtańsza, ale istnieje w porównaniu
+            if (data.cheapest_tariff !== 'G13s' && data.costs_comparison['G13s']) {
+                const g13s_cost = data.costs_comparison['G13s'];
+                const cheapest_cost = data.costs_comparison[data.cheapest_tariff];
+                const difference = g13s_cost - cheapest_cost;
+                
+                if (difference > 5) { // Jeśli G13s jest o więcej niż 5 zł droższa
+                    html += `
+                        <div class="alert alert-secondary mt-3">
+                            <h6><i class="fas fa-info-circle me-2"></i>Dlaczego G13s nie jest opłacalna w Twoim przypadku?</h6>
+                            <p>Taryfa G13s (<strong>${g13s_cost.toFixed(2)} zł</strong>) jest <strong>${difference.toFixed(2)} zł droższa</strong> niż ${data.cheapest_tariff}.</p>
+                            <p class="mb-0"><small>G13s opłaca się głównie, gdy można przesunąć zużycie na godziny nocne (21-7) i weekendy. 
+                            Przy Twoim profilu zużycia (większe zużycie w godzinach szczytowych) standardowe taryfy są bardziej opłacalne.</small></p>
+                        </div>
+                    `;
+                }
+            }
+            
+            recommendations.innerHTML = html;
+            displayComparisonTable(data);
+        }
+
+        function displayComparisonTable(data) {
+            const comparisonTable = document.getElementById('comparisonTable').getElementsByTagName('tbody')[0];
+            const referenceCost = data.costs_comparison[data.reference_tariff];
+            
+            let tableHtml = '';
+            
+            // Sort tariffs by cost
+            const sortedTariffs = Object.entries(data.costs_comparison).sort((a, b) => a[1] - b[1]);
+            
+            sortedTariffs.forEach(([tariffName, cost], index) => {
+                const tariffData = data.tariffs_data[tariffName];
+                const difference = cost - referenceCost;
+                const percentageDiff = referenceCost > 0 ? ((difference / referenceCost) * 100) : 0;
+                const avgPricePerKwh = data.total_usage > 0 ? (cost / data.total_usage) : 0;
+                
+                let rowClass = '';
+                let statusIcon = '';
+                let statusText = '';
+                
+                if (index === 0) {
+                    rowClass = 'table-success';
+                    statusIcon = '<i class="fas fa-crown text-success"></i>';
+                    statusText = 'Najtańsza';
+                } else if (index === sortedTariffs.length - 1) {
+                    rowClass = 'table-danger';
+                    statusIcon = '<i class="fas fa-times-circle text-danger"></i>';
+                    statusText = 'Najdroższa';
+                } else {
+                    rowClass = 'table-warning';
+                    statusIcon = '<i class="fas fa-minus-circle text-warning"></i>';
+                    statusText = 'Średnia';
+                }
+                
+                const differenceText = difference === 0 ? '0.00 zł' : 
+                    (difference > 0 ? `+${difference.toFixed(2)} zł` : `${difference.toFixed(2)} zł`);
+                
+                const percentageText = percentageDiff === 0 ? '0.0%' : 
+                    (percentageDiff > 0 ? `+${percentageDiff.toFixed(1)}%` : `${percentageDiff.toFixed(1)}%`);
+                
+                tableHtml += `
+                    <tr class="${rowClass}">
+                        <td><strong>${tariffName}</strong></td>
+                        <td><small>${tariffDescriptions[tariffName] || ''}</small></td>
+                        <td><strong>${cost.toFixed(2)} zł</strong></td>
+                        <td>${differenceText}</td>
+                        <td>${percentageText}</td>
+                        <td>${avgPricePerKwh.toFixed(3)} zł/kWh</td>
+                        <td>${statusIcon} ${statusText}</td>
+                    </tr>
+                `;
+            });
+            
+            comparisonTable.innerHTML = tableHtml;
+        }
+    </script>
+</body>
+</html>
