@@ -34,3 +34,13 @@ Brakujące odczyty są wykrywane i zgłaszane, ale nie są automatycznie uzupeł
 ## Ceny taryf
 
 Stawki są przechowywane w `tariff_prices.json`. Można je edytować na stronie `/tariffs`, a następnie zapisać lub wyeksportować. Wszystkie ceny są wartościami netto; VAT jest doliczany w kalkulatorze.
+
+## Symulacja magazynu energii
+
+Niezależny moduł `battery_simulator.py` symuluje przesuwanie zużycia z drogich godzin G13 do tańszych godzin. Przykład:
+
+```powershell
+python battery_simulator.py uploads/emporia_history.csv --start-date 2025-09-01 --end-date 2025-09-30 --capacity 10 --charge-power 5 --discharge-power 5 --efficiency 0.90
+```
+
+Moduł pokazuje koszt bez magazynu, koszt z magazynem, oszczędność, energię przesuniętą, liczbę cykli i końcowy poziom naładowania. Koszt inwestycji, degradację baterii i końcowy SOC należy interpretować osobno; wynik jest symulacją, nie ofertą instalatora.

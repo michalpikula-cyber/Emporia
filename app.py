@@ -7,6 +7,7 @@ import plotly.utils
 import json
 import os
 from pathlib import Path
+import holidays
 from werkzeug.utils import secure_filename
 from fetch_emporia_usage import login as login_emporia, sync_history
 
@@ -45,18 +46,18 @@ class TariffCalculator:
         """Oficjalne stawki netto Tauron na rok 2026 z dokumentów PDF."""
         self.prices = {
             # G11 - Energia czynna (Sprzedaż) [doc 5, str. 2]
-            'g11_energy': 0.4970,
+            'g11_energy': 0.5020,
             'g11_ss': 0.2464,  # [doc 4, str. 3]
             
             # G12 - Dwustrefowa [doc 5, str. 2 + doc 4, str. 3]
-            'g12_energy_day': 0.5430, 
-            'g12_energy_night': 0.4130,
+            'g12_energy_day': 0.5480, 
+            'g12_energy_night': 0.4180,
             'g12_ss_day': 0.2841, 
             'g12_ss_night': 0.0558,
             
             # G12w - Weekendowa [doc 5, str. 2 + doc 4, str. 3]
-            'g12w_energy_day': 0.6220, 
-            'g12w_energy_night': 0.4130,
+            'g12w_energy_day': 0.6270, 
+            'g12w_energy_night': 0.4180,
             'g12w_ss_day': 0.3298, 
             'g12w_ss_night': 0.0512,
             
@@ -71,31 +72,38 @@ class TariffCalculator:
 
             # ========== G13s - Tanie Godziny ==========
             # Ceny energii netto (zł/kWh) - z dokumentu ofertowego
-            'g13s_energy_lato_roboczy_szczyt': 0.7092,      # 7-9, 18-22 (lato, dzień roboczy)
-            'g13s_energy_lato_roboczy_pozaszczyt': 0.2750,  # 10-17 (lato, dzień roboczy)
-            'g13s_energy_lato_wolny_szczyt': 0.2867,        # 7-9, 18-22 (lato, dzień wolny)
-            'g13s_energy_lato_wolny_pozaszczyt': 0.1130,    # 10-17 (lato, dzień wolny)
-            'g13s_energy_lato_noc': 0.5050,                 # 0-7, 22-24 (lato)
-            
-            'g13s_energy_zima_roboczy_szczyt': 0.7092,      # 7-10, 16-22 (zima, dzień roboczy)
-            'g13s_energy_zima_roboczy_pozaszczyt': 0.5550,  # 11-15 (zima, dzień roboczy)
-            'g13s_energy_zima_wolny_szczyt': 0.4275,        # 7-10, 16-22 (zima, dzień wolny)
-            'g13s_energy_zima_wolny_pozaszczyt': 0.3350,    # 11-15 (zima, dzień wolny)
-            'g13s_energy_zima_noc': 0.4950,                 # 0-7, 22-24 (zima)
+            'g13s_energy_lato_roboczy_szczyt': 1.03472,
+            'g13s_energy_lato_roboczy_pozaszczyt': 0.27504,
+            'g13s_energy_lato_wolny_szczyt': 0.14333,
+            'g13s_energy_lato_wolny_pozaszczyt': 0.05650,
+            'g13s_energy_lato_roboczy_noc': 0.50504,
+            'g13s_energy_lato_wolny_noc': 0.14333,
+
+            'g13s_energy_zima_roboczy_szczyt': 1.03472,
+            'g13s_energy_zima_roboczy_pozaszczyt': 0.55504,
+            'g13s_energy_zima_wolny_szczyt': 0.21382,
+            'g13s_energy_zima_wolny_szczyt_wieczor': 0.24748,
+            'g13s_energy_zima_wolny_pozaszczyt': 0.16748,
+            'g13s_energy_zima_roboczy_noc': 0.49504,
+            'g13s_energy_zima_wolny_noc': 0.21382,
             
             # Składniki sieciowe G13s netto (zł/kWh) - z taryfy dystrybucyjnej
-            'g13s_ss_lato_roboczy_pozaszczyt': 0.1000,
-            'g13s_ss_lato_roboczy_szczyt': 0.2842,
-            'g13s_ss_lato_wolny_pozaszczyt': 0.0400,
-            'g13s_ss_lato_wolny_szczyt': 0.1176,
-            'g13s_ss_zima_roboczy_pozaszczyt': 0.1999,
-            'g13s_ss_zima_roboczy_szczyt': 0.3332,
-            'g13s_ss_zima_wolny_pozaszczyt': 0.1200,
-            'g13s_ss_zima_wolny_szczyt': 0.1960,
-            'g13s_ss_noc': 0.1094,  # noc cały rok
+            'g13s_ss_lato_roboczy_pozaszczyt': 0.10000,
+            'g13s_ss_lato_roboczy_szczyt': 0.28423,
+            'g13s_ss_lato_wolny_pozaszczyt': 0.04000,
+            'g13s_ss_lato_wolny_szczyt': 0.11756,
+            'g13s_ss_lato_roboczy_noc': 0.28423,
+            'g13s_ss_lato_wolny_noc': 0.11756,
+            'g13s_ss_zima_roboczy_pozaszczyt': 0.19992,
+            'g13s_ss_zima_roboczy_szczyt': 0.33317,
+            'g13s_ss_zima_wolny_pozaszczyt': 0.10943,
+            'g13s_ss_zima_wolny_szczyt': 0.19602,
+            'g13s_ss_zima_wolny_szczyt_wieczor': 0.12000,
+            'g13s_ss_zima_roboczy_noc': 0.10943,
+            'g13s_ss_zima_wolny_noc': 0.19602,
             
             # Opłata handlowa G13s (stała)
-            'oplata_handlowa_g13s': 19.10,  # zł/miesiąc netto
+            'oplata_handlowa_g13s': 23.98374,  # 29,50 zł brutto/miesiąc
 
 
             # Opłaty stałe i dodatkowe - Netto [doc 4, str. 3-4]
@@ -110,9 +118,9 @@ class TariffCalculator:
         self.last_update = "Taryfa Tauron 2026 (Oficjalna - 17.12.2025)"
 
     def is_holiday(self, date):
-        """Dni ustawowo wolne w 2026 r."""
-        holidays_2026 = ["2026-01-01", "2026-01-06", "2026-04-05", "2026-04-06", "2026-05-01", "2026-05-03", "2026-05-24", "2026-06-04", "2026-08-15", "2026-11-01", "2026-11-11", "2026-12-25", "2026-12-26"]
-        return date.strftime("%Y-%m-%d") in holidays_2026
+        """Sprawdza polskie święta ustawowe dla dowolnego roku."""
+        day = date.date() if hasattr(date, 'date') else date
+        return day in holidays.country_holidays("PL", years=day.year)
 
     def get_g13_zone(self, date, hour):
         """Wyznacza strefę dla taryfy G13 zgodnie z wyciągiem z taryfy[cite: 35, 36]."""
@@ -135,18 +143,16 @@ class TariffCalculator:
     
     def get_g13s_zone(self, date, hour, month, weekday):
         """
-        Zwraca strefę G13s dla uproszczonego modelu 3-strefowego.
-        Na podstawie tabel dystrybucyjnych.
+        Zwraca profil godzinowy G13s z podziałem na sezon i typ dnia.
         """
         is_summer = 4 <= month <= 9
         is_workday = weekday < 5 and not self.is_holiday(date)
         
         # Strefa nocna (21:00-7:00) - taka sama dla wszystkich
         if hour >= 21 or hour < 7:
-            if is_summer:
-                return 'lato_noc' if is_workday else 'lato_noc'  # noc taka sama
-            else:
-                return 'zima_noc' if is_workday else 'zima_noc'  # noc taka sama
+            season = 'lato' if is_summer else 'zima'
+            day_type = 'roboczy' if is_workday else 'wolny'
+            return f'{season}_{day_type}_noc'
         
         # Określ strefę dzienną
         if is_summer:
@@ -175,7 +181,9 @@ class TariffCalculator:
                 # Dzień wolny zima
                 if 10 <= hour < 15:
                     return 'zima_wolny_pozaszczyt'
-                else:  # 7-10 lub 15-21
+                if hour >= 15:
+                    return 'zima_wolny_szczyt_wieczor'
+                else:  # 7-10
                     return 'zima_wolny_szczyt'
 
     def detect_data_anomalies(self, df):
@@ -394,21 +402,8 @@ class TariffCalculator:
                     # Oblicz koszt energii
                     energy_cost = df.apply(lambda r: r['total_usage'] * self.prices[f'g13s_energy_{r["z13s"]}'], axis=1).sum()
                     
-                    # Oblicz składnik sieciowy (różne mapowanie)
-                    ss_mapping = {
-                        'lato_roboczy_pozaszczyt': 'lato_roboczy_pozaszczyt',
-                        'lato_roboczy_szczyt': 'lato_roboczy_szczyt',
-                        'lato_wolny_pozaszczyt': 'lato_wolny_pozaszczyt',
-                        'lato_wolny_szczyt': 'lato_wolny_szczyt',
-                        'lato_noc': 'noc',
-                        'zima_roboczy_pozaszczyt': 'zima_roboczy_pozaszczyt',
-                        'zima_roboczy_szczyt': 'zima_roboczy_szczyt',
-                        'zima_wolny_pozaszczyt': 'zima_wolny_pozaszczyt',
-                        'zima_wolny_szczyt': 'zima_wolny_szczyt',
-                        'zima_noc': 'noc'
-                    }
-                    
-                    ss_cost = df.apply(lambda r: r['total_usage'] * self.prices[f'g13s_ss_{ss_mapping[r["z13s"]]}'], axis=1).sum()
+                    # Stawka sieciowa ma ten sam profil godzinowy co cena sprzedaży.
+                    ss_cost = df.apply(lambda r: r['total_usage'] * self.prices[f'g13s_ss_{r["z13s"]}'], axis=1).sum()
                     
                     # DODATKOWA OPŁATA: opłata handlowa G13s (zamiast opłaty abonamentowej?)
                     # Uwaga: G13s ma OPŁATĘ HANDLOWĄ 19.10 zł zamiast standardowej opłaty abonamentowej
@@ -593,6 +588,19 @@ def sync_emporia():
         return jsonify(add_charts(result))
     except Exception as error:
         return jsonify({'error': f'Błąd synchronizacji Emporia: {error}'}), 502
+
+@app.route('/api/emporia/analyze', methods=['POST'])
+def analyze_emporia_history():
+    if not os.path.exists(EMPORIA_HISTORY_FILE):
+        return jsonify({'error': 'Brak lokalnej historii Emporia. Najpierw wykonaj synchronizację.'}), 404
+
+    result = calculator.analyze_usage(
+        EMPORIA_HISTORY_FILE,
+        request.form.get('start_date'),
+        request.form.get('end_date'),
+        request.form.get('reference_tariff', 'G11'),
+    )
+    return jsonify(add_charts(result))
 
 @app.route('/upload', methods=['POST'])
 def upload_file():

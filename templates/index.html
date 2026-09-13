@@ -25,7 +25,7 @@
         .upload-area {
             border: 2px dashed #dee2e6;
             border-radius: 10px;
-            padding: 40px;
+            padding: 16px;
             text-align: center;
             transition: all 0.3s ease;
             cursor: pointer;
@@ -39,6 +39,11 @@
         .upload-area.dragover {
             border-color: #667eea;
             background-color: #e3f2fd;
+        }
+
+        .upload-area .fa-cloud-upload-alt {
+            font-size: 1.5rem;
+            margin-bottom: 0.25rem !important;
         }
         
         .tariff-card {
@@ -155,25 +160,19 @@
             </div>
         </div>
 
-        <!-- Upload Section -->
+        <!-- Main data controls -->
         <div class="row mb-5">
             <div class="col-12">
                 <div class="card card-hover">
                     <div class="card-header bg-primary text-white">
                         <h5 class="mb-0">
-                            <i class="fas fa-upload me-2"></i>
-                            Wgraj plik z danymi Emporia Vue
+                            <i class="fas fa-database me-2"></i>
+                            Analiza danych Emporia
                         </h5>
                     </div>
                     <div class="card-body">
+                        <p class="text-muted mb-3">Wybierz zakres, a następnie przeanalizuj lokalną historię pobraną z Emporia.</p>
                         <form id="uploadForm" enctype="multipart/form-data">
-                            <div class="upload-area mb-4" id="uploadArea">
-                                <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                                <h5>Przeciągnij plik CSV tutaj lub kliknij, aby wybrać</h5>
-                                <p class="text-muted">Obsługiwane formaty: CSV (maksymalnie 16MB)</p>
-                                <input type="file" id="fileInput" name="file" accept=".csv" class="d-none">
-                            </div>
-                            
                             <div class="row mb-3">
                                 <div class="col-md-4">
                                     <label for="startDate" class="form-label">Data początkowa (opcjonalna)</label>
@@ -196,9 +195,13 @@
                             </div>
                             
                             <div class="text-center">
+                                <button type="button" class="btn btn-primary btn-lg px-4" id="analyzeHistoryBtn">
+                                    <i class="fas fa-chart-line me-2"></i>
+                                    Analizuj historię Emporia
+                                </button>
                                 <button type="submit" class="btn btn-primary btn-lg px-5">
-                                    <i class="fas fa-calculator me-2"></i>
-                                    Analizuj dane
+                                    <i class="fas fa-upload me-2"></i>
+                                    Awaryjny upload CSV
                                 </button>
                                 <button type="button" class="btn btn-outline-success btn-lg ms-2" id="syncEmporiaBtn">
                                     <i class="fas fa-cloud-arrow-down me-2"></i>
@@ -206,6 +209,15 @@
                                 </button>
                             </div>
                         </form>
+                        <details class="mt-3">
+                            <summary class="text-muted">Użyj pliku CSV zamiast historii Emporia</summary>
+                            <div class="upload-area mt-3" id="uploadArea">
+                                <i class="fas fa-cloud-upload-alt text-muted"></i>
+                                <h6>Przeciągnij plik CSV tutaj lub kliknij</h6>
+                                <small class="text-muted">Maksymalnie 16 MB</small>
+                                <input type="file" id="fileInput" name="file" accept=".csv" class="d-none">
+                            </div>
+                        </details>
                         
                         <!-- Loading Spinner -->
                         <div class="loading-spinner text-center py-4">
@@ -343,6 +355,7 @@
         const fileInput = document.getElementById('fileInput');
         const uploadForm = document.getElementById('uploadForm');
         const syncEmporiaBtn = document.getElementById('syncEmporiaBtn');
+        const analyzeHistoryBtn = document.getElementById('analyzeHistoryBtn');
         const loadingSpinner = document.querySelector('.loading-spinner');
         const resultsSection = document.getElementById('resultsSection');
 
@@ -442,6 +455,31 @@
             } finally {
                 loadingSpinner.style.display = 'none';
                 syncEmporiaBtn.disabled = false;
+            }
+        });
+
+        analyzeHistoryBtn.addEventListener('click', async () => {
+            const formData = new FormData(uploadForm);
+            loadingSpinner.style.display = 'block';
+            resultsSection.style.display = 'none';
+            analyzeHistoryBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/emporia/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (!response.ok || result.error) {
+                    alert('Błąd analizy: ' + (result.error || 'Nieznany błąd'));
+                } else {
+                    displayResults(result);
+                }
+            } catch (error) {
+                alert('Nie udało się przeanalizować historii: ' + error.message);
+            } finally {
+                loadingSpinner.style.display = 'none';
+                analyzeHistoryBtn.disabled = false;
             }
         });
 

@@ -122,6 +122,10 @@
                                         <i class="fas fa-times me-2"></i>
                                         Anuluj
                                     </button>
+                                    <button class="btn btn-outline-dark" id="priceModeBtn" type="button">
+                                        <i class="fas fa-receipt me-2"></i>
+                                        Pokaż brutto
+                                    </button>
                                 </div>
                             </div>
                             <div class="col-md-6 text-end">
@@ -168,7 +172,7 @@
                             <h6><i class="fas fa-info-circle me-2"></i>Informacje o cenach</h6>
                             <ul class="mb-0">
                                 <li><strong>Ceny obowiązujące od 01.01.2026 (na podstawie zatwierdzonej taryfy Tauron).</strong></li>
-                                <li><strong>Wszystkie ceny:</strong> netto (bez VAT 23%)</li>
+                                <li><strong>Tryb prezentacji:</strong> <span id="priceModeLabel">netto</span> (VAT 23% można włączyć przyciskiem)</li>
                             </ul>
                         </div>
                         <div class="col-md-6">
@@ -249,8 +253,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let editMode = false;
+        let grossMode = false;
         let originalPrices = {};
         let currentPrices = {};
+        const VAT_MULTIPLIER = 1.23;
 
         // Tariff definitions
         const tariffDefinitions = {
@@ -287,21 +293,26 @@
                 description: 'Strefy letnie i zimowe',
                 zones: [
                     'lato_roboczy_szczyt', 'lato_roboczy_pozaszczyt',
-                    'lato_wolny_szczyt', 'lato_wolny_pozaszczyt', 'lato_noc',
+                    'lato_wolny_szczyt', 'lato_wolny_pozaszczyt',
+                    'lato_roboczy_noc', 'lato_wolny_noc',
                     'zima_roboczy_szczyt', 'zima_roboczy_pozaszczyt',
-                    'zima_wolny_szczyt', 'zima_wolny_pozaszczyt', 'zima_noc'
+                    'zima_wolny_szczyt', 'zima_wolny_szczyt_wieczor',
+                    'zima_wolny_pozaszczyt', 'zima_roboczy_noc', 'zima_wolny_noc'
                 ],
                 zoneNames: {
                     'lato_roboczy_szczyt': 'Lato, dzień roboczy - szczyt',
                     'lato_roboczy_pozaszczyt': 'Lato, dzień roboczy - pozaszczyt',
                     'lato_wolny_szczyt': 'Lato, dzień wolny - szczyt',
                     'lato_wolny_pozaszczyt': 'Lato, dzień wolny - pozaszczyt',
-                    'lato_noc': 'Lato - noc',
+                    'lato_roboczy_noc': 'Lato, dzień roboczy - noc',
+                    'lato_wolny_noc': 'Lato, dzień wolny - noc',
                     'zima_roboczy_szczyt': 'Zima, dzień roboczy - szczyt',
                     'zima_roboczy_pozaszczyt': 'Zima, dzień roboczy - pozaszczyt',
                     'zima_wolny_szczyt': 'Zima, dzień wolny - szczyt',
+                    'zima_wolny_szczyt_wieczor': 'Zima, dzień wolny - szczyt wieczorny',
                     'zima_wolny_pozaszczyt': 'Zima, dzień wolny - pozaszczyt',
-                    'zima_noc': 'Zima - noc'
+                    'zima_roboczy_noc': 'Zima, dzień roboczy - noc',
+                    'zima_wolny_noc': 'Zima, dzień wolny - noc'
                 }
             }
         };
@@ -316,6 +327,7 @@
             document.getElementById('editModeBtn').addEventListener('click', toggleEditMode);
             document.getElementById('saveChangesBtn').addEventListener('click', saveChanges);
             document.getElementById('cancelChangesBtn').addEventListener('click', cancelChanges);
+            document.getElementById('priceModeBtn').addEventListener('click', togglePriceMode);
             document.getElementById('importPricesBtn').addEventListener('click', toggleImportForm);
             document.getElementById('exportPricesBtn').addEventListener('click', exportPrices);
             document.getElementById('uploadPricesBtn').addEventListener('click', uploadPrices);
@@ -414,12 +426,12 @@
                             <label class="small fw-bold">${info.zoneNames[zone]}</label>
                             <div class="input-group input-group-sm mb-1">
                                 <span class="input-group-text">Energia</span>
-                                <input type="number" class="form-control" value="${currentPrices[key] || 0}" data-price-key="${key}" ${editMode ? '' : 'readonly'}>
+                                <input type="number" class="form-control" step="0.00001" value="${displayPrice(currentPrices[key])}" data-price-key="${key}" ${editMode ? '' : 'readonly'}>
                             </div>
                             ${code === 'G11' || zone !== 'standard' ? `
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text">Sieć</span>
-                                <input type="number" class="form-control" value="${currentPrices[ssKey] || 0}" data-price-key="${ssKey}" ${editMode ? '' : 'readonly'}>
+                                <input type="number" class="form-control" step="0.00001" value="${displayPrice(currentPrices[ssKey])}" data-price-key="${ssKey}" ${editMode ? '' : 'readonly'}>
                             </div>` : ''}
                         </div>`;
                 });
@@ -428,6 +440,24 @@
             });
             html += createFixedFeesCard();
             container.innerHTML = html;
+            container.querySelectorAll('input[data-price-key]').forEach(input => {
+                if (editMode) input.addEventListener('input', updatePriceValue);
+            });
+        }
+
+        function displayPrice(value) {
+            const numericValue = Number(value) || 0;
+            return (grossMode ? numericValue * VAT_MULTIPLIER : numericValue).toFixed(5);
+        }
+
+        function togglePriceMode() {
+            grossMode = !grossMode;
+            const button = document.getElementById('priceModeBtn');
+            button.innerHTML = grossMode
+                ? '<i class="fas fa-tag me-2"></i>Pokaż netto'
+                : '<i class="fas fa-receipt me-2"></i>Pokaż brutto';
+            document.getElementById('priceModeLabel').textContent = grossMode ? 'brutto' : 'netto';
+            displayTariffCards();
         }
 
         function createTariffCard(tariffCode, tariffInfo) {
@@ -516,9 +546,9 @@
                         </div>
                         <div class="col-4">
                             <div class="input-group">
-                                <input type="number" class="form-control price-input" 
+                                    <input type="number" class="form-control price-input"
                                        step="0.00001" min="0" 
-                                       value="${value.toFixed(5)}"
+                                        value="${displayPrice(value)}"
                                        data-price-key="${fee.key}"
                                        ${editMode ? '' : 'readonly'}>
                                 <span class="input-group-text">${fee.unit}</span>
@@ -576,8 +606,8 @@
 
         function updatePriceValue(event) {
             const key = event.target.getAttribute('data-price-key');
-            const value = parseFloat(event.target.value) || 0;
-            currentPrices[key] = value;
+            const displayedValue = parseFloat(event.target.value) || 0;
+            currentPrices[key] = grossMode ? displayedValue / VAT_MULTIPLIER : displayedValue;
         }
 
         async function saveChanges() {
