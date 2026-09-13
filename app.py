@@ -6,7 +6,9 @@ import plotly.graph_objs as go
 import plotly.utils
 import json
 import os
+from pathlib import Path
 from werkzeug.utils import secure_filename
+from fetch_emporia_usage import login as login_emporia, sync_history
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -14,6 +16,7 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 PRICES_FILE = 'tariff_prices.json'
+EMPORIA_HISTORY_FILE = os.path.join(app.config['UPLOAD_FOLDER'], 'emporia_history.csv')
 
 class TariffCalculator:
     def __init__(self):
@@ -524,6 +527,72 @@ def api_tariffs():
     with open(PRICES_FILE, 'w', encoding='utf-8') as f:
         json.dump({'prices': calculator.prices, 'last_update': calculator.last_update}, f, indent=2)
     return jsonify({'success': True, 'timestamp': calculator.last_update})
+
+def add_charts(res):
+    if 'success' not in res:
+        return res
+
+    fig_costs = go.Figure(go.Bar(
+        x=list(res['costs_comparison'].keys()),
+        y=list(res['costs_comparison'].values()),
+        marker_color='#4682B4',
+        text=[f"{v:.2f} zł" for v in res['costs_comparison'].values()],
+        textposition='auto'
+    ))
+    fig_costs.update_layout(
+        title='Porównanie kosztów taryf (Brutto)',
+        xaxis_title='Taryfa',
+        yaxis_title='Koszt (zł)',
+        height=400
+    )
+
+    hourly_data = res.get('hourly_usage', [])
+    fig_hourly = go.Figure(go.Bar(
+        x=[h['hour'] for h in hourly_data],
+        y=[h['total_usage'] for h in hourly_data],
+        marker_color='#FF6B6B'
+    ))
+    fig_hourly.update_layout(
+        title='Średnie zużycie energii w ciągu doby',
+        xaxis_title='Godzina',
+        yaxis_title='Zużycie (kWh)',
+        height=400
+    )
+
+    charts = {
+        'g12_usage': go.Figure(go.Pie(
+            labels=['Dzień', 'Noc'], values=[60, 40],
+            marker_colors=['#FFA07A', '#20B2AA']
+        )),
+        'g12w_usage': go.Figure(go.Pie(
+            labels=['Dzień', 'Noc+Weekend'], values=[50, 50],
+            marker_colors=['#FFA07A', '#20B2AA']
+        )),
+        'g13_usage': go.Figure(go.Pie(
+            labels=['Przedpołudnie', 'Popołudnie', 'Pozostałe'], values=[30, 25, 45],
+            marker_colors=['#FFD700', '#FF6347', '#32CD32']
+        ))
+    }
+    res['charts'] = {
+        'costs_comparison': fig_costs.to_dict(),
+        'hourly_usage': fig_hourly.to_dict(),
+        **{name: figure.to_dict() for name, figure in charts.items()}
+    }
+    return res
+
+@app.route('/api/emporia/sync', methods=['POST'])
+def sync_emporia():
+    try:
+        new_rows, total_rows = sync_history(
+            login_emporia(),
+            Path(EMPORIA_HISTORY_FILE),
+            initial_days=int(os.getenv('EMPORIA_INITIAL_DAYS', '730')),
+        )
+        result = calculator.analyze_usage(EMPORIA_HISTORY_FILE)
+        result['sync'] = {'new_rows': new_rows, 'total_rows': total_rows}
+        return jsonify(add_charts(result))
+    except Exception as error:
+        return jsonify({'error': f'Błąd synchronizacji Emporia: {error}'}), 502
 
 @app.route('/upload', methods=['POST'])
 def upload_file():

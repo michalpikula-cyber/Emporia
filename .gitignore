@@ -5,6 +5,8 @@ env/
 __pycache__/
 *.py
 !app.py
+!test_emporia_api.py
+!fetch_emporia_usage.py
 *.py[cod]
 *$py.class
 .pytest_cache/
@@ -16,6 +18,9 @@ uploads/*
 *.log
 .env
 .env.*
+!.env.example
+.emporia_tokens.json
+keys.json
 
 # Private measurements and billing documents
 *.csv

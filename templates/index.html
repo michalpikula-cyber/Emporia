@@ -200,6 +200,10 @@
                                     <i class="fas fa-calculator me-2"></i>
                                     Analizuj dane
                                 </button>
+                                <button type="button" class="btn btn-outline-success btn-lg ms-2" id="syncEmporiaBtn">
+                                    <i class="fas fa-cloud-arrow-down me-2"></i>
+                                    Synchronizuj Emporia
+                                </button>
                             </div>
                         </form>
                         
@@ -338,6 +342,7 @@
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const uploadForm = document.getElementById('uploadForm');
+        const syncEmporiaBtn = document.getElementById('syncEmporiaBtn');
         const loadingSpinner = document.querySelector('.loading-spinner');
         const resultsSection = document.getElementById('resultsSection');
 
@@ -416,6 +421,27 @@
                 alert('Wystąpił błąd podczas przesyłania pliku: ' + error.message);
             } finally {
                 loadingSpinner.style.display = 'none';
+            }
+        });
+
+        syncEmporiaBtn.addEventListener('click', async () => {
+            loadingSpinner.style.display = 'block';
+            resultsSection.style.display = 'none';
+            syncEmporiaBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/emporia/sync', { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok || result.error) {
+                    alert('Błąd synchronizacji: ' + (result.error || 'Nieznany błąd'));
+                } else {
+                    displayResults(result);
+                }
+            } catch (error) {
+                alert('Nie udało się połączyć z Emporia: ' + error.message);
+            } finally {
+                loadingSpinner.style.display = 'none';
+                syncEmporiaBtn.disabled = false;
             }
         });
 
