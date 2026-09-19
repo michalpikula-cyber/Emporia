@@ -170,6 +170,87 @@ def simulate_g13_battery(
     }
 
 
+def simulate_pv_battery(
+    usage_kwh,
+    production_kwh,
+    import_price_net,
+    export_price_net: float,
+    config: BatteryConfig,
+) -> dict[str, float]:
+    """Ładuje magazyn z nadwyżki PV i rozładowuje na niedobór load (bez arbitrażu taryfowego)."""
+    if not 0 < config.charge_efficiency <= 1 or not 0 < config.discharge_efficiency <= 1:
+        raise ValueError("Sprawność ładowania i rozładowania musi być w zakresie (0, 1].")
+    if config.capacity_kwh <= 0 or config.charge_power_kw <= 0 or config.discharge_power_kw <= 0:
+        raise ValueError("Pojemność i moce magazynu muszą być dodatnie.")
+
+    loads = list(usage_kwh)
+    production = list(production_kwh)
+    prices = list(import_price_net)
+    if not (len(loads) == len(production) == len(prices)):
+        raise ValueError("Zużycie, produkcja i ceny muszą mieć tę samą długość.")
+
+    soc = min(max(config.initial_soc_kwh, 0.0), config.capacity_kwh)
+    autoconsumed_direct = 0.0
+    charged_from_pv = 0.0
+    discharged_to_load = 0.0
+    grid_import = 0.0
+    grid_export = 0.0
+    grid_import_cost_net = 0.0
+    export_value_net = 0.0
+    avoided_import_value_net = 0.0
+    degradation_cost_net = 0.0
+
+    for load, produced, price in zip(loads, production, prices):
+        direct = min(load, produced)
+        remaining_load = load - direct
+        remaining_pv = produced - direct
+        autoconsumed_direct += direct
+        avoided_import_value_net += direct * price
+
+        if remaining_pv > 0 and soc < config.capacity_kwh:
+            charge_input = min(
+                remaining_pv,
+                config.charge_power_kw,
+                (config.capacity_kwh - soc) / config.charge_efficiency,
+            )
+            soc += charge_input * config.charge_efficiency
+            remaining_pv -= charge_input
+            charged_from_pv += charge_input
+
+        if remaining_load > 0 and soc > 0:
+            delivered = min(
+                remaining_load,
+                config.discharge_power_kw,
+                soc * config.discharge_efficiency,
+            )
+            soc -= delivered / config.discharge_efficiency
+            remaining_load -= delivered
+            discharged_to_load += delivered
+            avoided_import_value_net += delivered * price
+            degradation_cost_net += delivered * config.degradation_cost_net_per_kwh
+
+        grid_import += remaining_load
+        grid_import_cost_net += remaining_load * price
+        grid_export += remaining_pv
+        export_value_net += remaining_pv * export_price_net
+
+    cycles = discharged_to_load / config.capacity_kwh if config.capacity_kwh else 0.0
+    return {
+        "autoconsumed_direct_kwh": autoconsumed_direct,
+        "charged_from_pv_kwh": charged_from_pv,
+        "discharged_to_load_kwh": discharged_to_load,
+        "grid_import_kwh": grid_import,
+        "grid_export_kwh": grid_export,
+        "grid_import_cost_net": grid_import_cost_net,
+        "export_value_net": export_value_net,
+        "avoided_import_value_net": avoided_import_value_net,
+        "degradation_cost_net": degradation_cost_net,
+        "cycles_equivalent": cycles,
+        "final_soc_kwh": soc,
+        "round_trip_efficiency_percent": config.round_trip_efficiency * 100.0,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv", nargs="?", default="uploads/emporia_history.csv")
@@ -180,6 +261,11 @@ def main() -> None:
     parser.add_argument("--discharge-power", type=float, default=5.0, help="Moc rozładowania kW")
     parser.add_argument("--efficiency", type=float, default=0.90, help="Sprawność całego cyklu")
     parser.add_argument("--degradation-cost", type=float, default=0.0, help="Koszt degradacji netto zł/kWh oddanej energii")
+    parser.add_argument(
+        "--pv-production-csv",
+        help="Opcjonalny CSV z kolumną production_kwh (ta sama długość co zużycie) — tryb ładowania z PV",
+    )
+    parser.add_argument("--export-price", type=float, default=0.25, help="Cena eksportu netto zł/kWh (tryb PV)")
     args = parser.parse_args()
     efficiency = args.efficiency ** 0.5
     config = BatteryConfig(
@@ -190,11 +276,22 @@ def main() -> None:
         discharge_efficiency=efficiency,
         degradation_cost_net_per_kwh=args.degradation_cost,
     )
-    result = simulate_g13_battery(
-        load_usage(Path(args.csv), args.start_date, args.end_date),
-        load_prices(),
-        config,
-    )
+    frame = load_usage(Path(args.csv), args.start_date, args.end_date)
+    if args.pv_production_csv:
+        production_frame = pd.read_csv(args.pv_production_csv)
+        if "production_kwh" not in production_frame.columns:
+            raise SystemExit("Plik produkcji musi zawierać kolumnę production_kwh")
+        prices = load_prices()
+        import_prices = variable_prices(frame, prices)
+        result = simulate_pv_battery(
+            usage_kwh=frame["usage_kwh"].to_numpy(),
+            production_kwh=production_frame["production_kwh"].to_numpy(),
+            import_price_net=import_prices.to_numpy(),
+            export_price_net=args.export_price,
+            config=config,
+        )
+    else:
+        result = simulate_g13_battery(frame, load_prices(), config)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 

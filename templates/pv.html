@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zasadność fotowoltaiki</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #2E8B57 0%, #1c5c3c 100%);
+            color: white;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        .results-section { display: none; }
+        .loading-spinner { display: none; }
+        .kpi-card {
+            border-left: 4px solid #2E8B57;
+        }
+    </style>
+</head>
+<body>
+    <div class="gradient-bg py-4">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="h2 fw-bold mb-2">
+                        <i class="fas fa-solar-panel me-2"></i>
+                        Zasadność montażu fotowoltaiki
+                    </h1>
+                    <p class="mb-0">
+                        Dopasowanie godzinowej produkcji PV (PVGIS) do zużycia Emporia,
+                        oszczędność na imporcie, wartość eksportu, payback i NPV.
+                    </p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <a href="/" class="btn btn-light me-2">
+                        <i class="fas fa-bolt me-1"></i> Taryfy
+                    </a>
+                    <a href="/tariffs" class="btn btn-outline-light">
+                        <i class="fas fa-cog me-1"></i> Ceny
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container my-4">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Parametry instalacji</h5>
+            </div>
+            <div class="card-body">
+                <form id="pvForm">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Szerokość geogr.</label>
+                            <input type="number" step="0.0001" class="form-control" name="latitude" value="{{ config.latitude }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Długość geogr.</label>
+                            <input type="number" step="0.0001" class="form-control" name="longitude" value="{{ config.longitude }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Nachylenie (°)</label>
+                            <input type="number" step="0.1" class="form-control" name="tilt_deg" value="{{ config.tilt_deg }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Azymut PVGIS (°)</label>
+                            <input type="number" step="0.1" class="form-control" name="azimuth_deg" value="{{ config.azimuth_deg }}">
+                            <small class="text-muted">0 = południe, -90 = wschód, 90 = zachód</small>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Straty systemu (%)</label>
+                            <input type="number" step="0.1" class="form-control" name="system_loss_percent" value="{{ config.system_loss_percent }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Scenariusze kWp</label>
+                            <input type="text" class="form-control" name="kwp_scenarios" value="{{ config.kwp_scenarios|join(', ') }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Limit falownika AC (kW)</label>
+                            <input type="number" step="0.1" class="form-control" name="inverter_ac_kw" value="{{ config.inverter_ac_kw or '' }}" placeholder="opcjonalnie">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Taryfa importu</label>
+                            <select class="form-select" name="tariff">
+                                {% for tariff in ['G11', 'G12', 'G12w', 'G13', 'G13s'] %}
+                                <option value="{{ tariff }}" {% if config.tariff == tariff %}selected{% endif %}>{{ tariff }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Cena eksportu netto (zł/kWh)</label>
+                            <input type="number" step="0.01" class="form-control" name="export_price_net_per_kwh" value="{{ config.export_price_net_per_kwh }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Koszt instalacji PV netto (zł/kWp)</label>
+                            <input type="number" step="1" class="form-control" name="capex_net_per_kwp" value="{{ config.capex_net_per_kwp }}">
+                            <small class="text-muted">Bez magazynu; VAT inwestycji 8%</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Koszt magazynu netto (zł)</label>
+                            <input type="number" step="1" class="form-control" name="battery_capex_net" value="{{ config.battery_capex_net }}">
+                            <small class="text-muted">Stała kwota — doliczana gdy magazyn włączony</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">OPEX netto / rok (zł)</label>
+                            <input type="number" step="1" class="form-control" name="opex_net_per_year" value="{{ config.opex_net_per_year }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Degradacja (%/rok)</label>
+                            <input type="number" step="0.1" class="form-control" name="degradation_percent_per_year" value="{{ config.degradation_percent_per_year }}">
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Horyzont (lata)</label>
+                            <input type="number" step="1" class="form-control" name="horizon_years" value="{{ config.horizon_years }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Stopa dyskontowa (%)</label>
+                            <input type="number" step="0.1" class="form-control" name="discount_rate_percent" value="{{ config.discount_rate_percent }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Data od</label>
+                            <input type="date" class="form-control" name="start_date">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Data do</label>
+                            <input type="date" class="form-control" name="end_date">
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-3">
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="batteryEnabled" name="battery_enabled" {% if config.battery.enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="batteryEnabled">Magazyn energii (ładowanie z PV)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Pojemność (kWh)</label>
+                            <input type="number" step="0.1" class="form-control" name="battery_capacity_kwh" value="{{ config.battery.capacity_kwh }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Moc ładowania (kW)</label>
+                            <input type="number" step="0.1" class="form-control" name="battery_charge_power_kw" value="{{ config.battery.charge_power_kw }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Moc rozładowania (kW)</label>
+                            <input type="number" step="0.1" class="form-control" name="battery_discharge_power_kw" value="{{ config.battery.discharge_power_kw }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Sprawność cyklu</label>
+                            <input type="number" step="0.01" class="form-control" name="battery_round_trip_efficiency" value="{{ config.battery.round_trip_efficiency }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Koszt degradacji netto (zł/kWh)</label>
+                            <input type="number" step="0.01" class="form-control" name="battery_degradation_cost_net_per_kwh" value="{{ config.battery.degradation_cost_net_per_kwh }}">
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="saveConfig" name="save_config" checked>
+                                <label class="form-check-label" for="saveConfig">Zapisz parametry</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-success btn-lg px-5">
+                            <i class="fas fa-calculator me-2"></i>
+                            Oceń zasadność PV
+                        </button>
+                    </div>
+                </form>
+
+                <div class="loading-spinner text-center py-4" id="loadingSpinner">
+                    <div class="spinner-border text-success" role="status"></div>
+                    <p class="mt-3 mb-0">Pobieranie PVGIS i dopasowanie godzinowe...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorBox" class="alert alert-danger d-none"></div>
+
+        <div class="results-section" id="resultsSection">
+            <div class="row mb-3" id="summaryCards"></div>
+
+            <div class="chart-container">
+                <h5 class="mb-3">Skan mocy</h5>
+                <div id="powerScanChart"></div>
+            </div>
+
+            <div class="chart-container">
+                <h5 class="mb-3">Profil dobowy (rekomendacja)</h5>
+                <div id="hourlyMatchChart"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Scenariusze mocy</h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-striped" id="scenariosTable">
+                        <thead>
+                            <tr>
+                                <th>kWp</th>
+                                <th>Prod. roczna</th>
+                                <th>Autocons. %</th>
+                                <th>Samowyst. %</th>
+                                <th>Oszcz. rachunek</th>
+                                <th>Wartość eksportu</th>
+                                <th>Korzyść netto/rok</th>
+                                <th>CAPEX brutto</th>
+                                <th>w tym magazyn</th>
+                                <th>Payback</th>
+                                <th>NPV netto</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <p class="text-muted small mb-0" id="sourceNote"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formToPayload(form) {
+            const data = Object.fromEntries(new FormData(form).entries());
+            data.battery_enabled = form.battery_enabled.checked;
+            data.save_config = form.save_config.checked;
+            if (!data.inverter_ac_kw) data.inverter_ac_kw = null;
+            return data;
+        }
+
+        function money(value) {
+            if (value === null || value === undefined) return '—';
+            return `${Number(value).toLocaleString('pl-PL', { maximumFractionDigits: 0 })} zł`;
+        }
+
+        document.getElementById('pvForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const spinner = document.getElementById('loadingSpinner');
+            const errorBox = document.getElementById('errorBox');
+            const results = document.getElementById('resultsSection');
+            spinner.style.display = 'block';
+            errorBox.classList.add('d-none');
+            results.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/pv/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formToPayload(event.target)),
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) {
+                    throw new Error(data.error || 'Nieznany błąd');
+                }
+                renderResults(data);
+                results.style.display = 'block';
+            } catch (error) {
+                errorBox.textContent = error.message;
+                errorBox.classList.remove('d-none');
+            } finally {
+                spinner.style.display = 'none';
+            }
+        });
+
+        function renderResults(data) {
+            const recommended = data.recommended || {};
+            const cards = document.getElementById('summaryCards');
+            cards.innerHTML = `
+                <div class="col-md-3"><div class="card kpi-card"><div class="card-body">
+                    <div class="text-muted">Rekomendacja</div>
+                    <div class="h3 mb-0">${recommended.kwp ?? '—'} kWp</div>
+                </div></div></div>
+                <div class="col-md-3"><div class="card kpi-card"><div class="card-body">
+                    <div class="text-muted">Autoconsumption</div>
+                    <div class="h3 mb-0">${recommended.autoconsumption_percent ?? '—'}%</div>
+                </div></div></div>
+                <div class="col-md-3"><div class="card kpi-card"><div class="card-body">
+                    <div class="text-muted">Korzyść brutto / rok</div>
+                    <div class="h3 mb-0">${money(recommended.annual_net_benefit_gross)}</div>
+                </div></div></div>
+                <div class="col-md-3"><div class="card kpi-card"><div class="card-body">
+                    <div class="text-muted">Payback / NPV</div>
+                    <div class="h5 mb-0">${recommended.simple_payback_years ?? '—'} lat</div>
+                    <div class="small text-muted">NPV netto: ${money(recommended.npv_net)}</div>
+                </div></div></div>
+            `;
+
+            if (data.charts?.power_scan) {
+                Plotly.newPlot('powerScanChart', data.charts.power_scan.data, data.charts.power_scan.layout, {responsive: true});
+            }
+            if (data.charts?.hourly_match) {
+                Plotly.newPlot('hourlyMatchChart', data.charts.hourly_match.data, data.charts.hourly_match.layout, {responsive: true});
+            }
+
+            const tbody = document.querySelector('#scenariosTable tbody');
+            tbody.innerHTML = (data.scenarios || []).map(item => `
+                <tr class="${item.kwp === data.recommended_kwp ? 'table-success' : ''}">
+                    <td><strong>${item.kwp}</strong></td>
+                    <td>${item.annual_production_kwh} kWh</td>
+                    <td>${item.autoconsumption_percent}%</td>
+                    <td>${item.self_sufficiency_percent}%</td>
+                    <td>${money(item.annual_bill_savings_gross)}</td>
+                    <td>${money(item.annual_export_value_gross)}</td>
+                    <td>${money(item.annual_net_benefit_gross)}</td>
+                    <td>${money(item.capex_gross)}</td>
+                    <td>${money(item.capex_battery_gross)}</td>
+                    <td>${item.simple_payback_years ?? '—'} lat</td>
+                    <td>${money(item.npv_net)}</td>
+                </tr>
+            `).join('');
+
+            document.getElementById('sourceNote').textContent =
+                `Okres: ${data.period_start} → ${data.period_end}. Źródło produkcji: ${data.production_source}. Taryfa: ${data.tariff}. ` +
+                `CAPEX = PV (zł/kWp × moc) + stały koszt magazynu; VAT inwestycji 8%, VAT energii na rachunku 23%.`;
+        }
+    </script>
+</body>
+</html>

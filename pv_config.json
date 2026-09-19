@@ -1,0 +1,39 @@
+{
+  "latitude": 49.568,
+  "longitude": 20.832,
+  "tilt_deg": 40.0,
+  "azimuth_deg": -15.0,
+  "system_loss_percent": 14.0,
+  "kwp_scenarios": [
+    2.5,
+    5.0,
+    8.0,
+    10.0,
+    15.0
+  ],
+  "export_price_net_per_kwh": 0.25,
+  "capex_net_per_kwp": 4000.0,
+  "battery_capex_net": 15000.0,
+  "opex_net_per_year": 200.0,
+  "degradation_percent_per_year": 0.5,
+  "horizon_years": 20,
+  "discount_rate_percent": 5.0,
+  "tariff": "G13",
+  "inverter_ac_kw": 0.0,
+  "battery": {
+    "enabled": true,
+    "capacity_kwh": 10.0,
+    "charge_power_kw": 5.0,
+    "discharge_power_kw": 5.0,
+    "round_trip_efficiency": 0.9,
+    "degradation_cost_net_per_kwh": 0.0,
+    "capex_net": 15000.0
+  },
+  "notes": {
+    "azimuth_deg": "0 = południe (konwencja PVGIS), -90 = wschód, 90 = zachód, 180 = północ",
+    "export_price_net_per_kwh": "Orientacyjna wartość 1 kWh nadwyżki w net-billing (netto)",
+    "capex_net_per_kwp": "Koszt instalacji PV netto zł/kWp (bez magazynu)",
+    "battery_capex_net": "Stały koszt magazynu netto zł (nie skaluje się z kWp); doliczany tylko gdy magazyn włączony",
+    "vat": "CAPEX brutto: VAT 8% (montaż domowy). Oszczędności na rachunku: VAT 23% (energia)"
+  }
+}

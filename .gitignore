@@ -8,6 +8,8 @@ __pycache__/
 !test_emporia_api.py
 !fetch_emporia_usage.py
 !battery_simulator.py
+!pv_production.py
+!pv_feasibility.py
 *.py[cod]
 *$py.class
 .pytest_cache/

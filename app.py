@@ -10,6 +10,12 @@ from pathlib import Path
 import holidays
 from werkzeug.utils import secure_filename
 from fetch_emporia_usage import login as login_emporia, sync_history
+from pv_feasibility import (
+    analyze_pv_feasibility,
+    config_from_form,
+    load_pv_config,
+    save_pv_config,
+)
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -18,6 +24,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 PRICES_FILE = 'tariff_prices.json'
 EMPORIA_HISTORY_FILE = os.path.join(app.config['UPLOAD_FOLDER'], 'emporia_history.csv')
+PV_CONFIG_FILE = 'pv_config.json'
 
 class TariffCalculator:
     def __init__(self):
@@ -511,6 +518,114 @@ def index(): return render_template('index.html')
 
 @app.route('/tariffs')
 def tariffs(): return render_template('tariffs.html')
+
+@app.route('/pv')
+def pv_page():
+    config = load_pv_config(Path(PV_CONFIG_FILE))
+    return render_template('pv.html', config=config.to_dict())
+
+@app.route('/api/pv/config', methods=['GET', 'POST'])
+def api_pv_config():
+    if request.method == 'GET':
+        config = load_pv_config(Path(PV_CONFIG_FILE))
+        return jsonify({'success': True, 'config': config.to_dict()})
+
+    payload = request.get_json(silent=True) or {}
+    config = config_from_form(payload, load_pv_config(Path(PV_CONFIG_FILE)))
+    save_pv_config(config, Path(PV_CONFIG_FILE))
+    return jsonify({'success': True, 'config': config.to_dict()})
+
+@app.route('/api/pv/analyze', methods=['POST'])
+def api_pv_analyze():
+    if not os.path.exists(EMPORIA_HISTORY_FILE):
+        return jsonify({
+            'error': 'Brak lokalnej historii Emporia. Najpierw synchronizuj dane na stronie głównej.'
+        }), 404
+
+    payload = request.get_json(silent=True) or {}
+    if not payload and request.form:
+        payload = request.form.to_dict()
+
+    try:
+        config = config_from_form(payload, load_pv_config(Path(PV_CONFIG_FILE)))
+        if payload.get('save_config') in (True, 'true', '1', 'on'):
+            save_pv_config(config, Path(PV_CONFIG_FILE))
+
+        result = analyze_pv_feasibility(
+            Path(EMPORIA_HISTORY_FILE),
+            config=config,
+            start_date=payload.get('start_date') or None,
+            end_date=payload.get('end_date') or None,
+            prices=calculator.prices,
+        )
+        return jsonify(add_pv_charts(result))
+    except Exception as error:
+        return jsonify({'error': f'Błąd analizy PV: {error}'}), 500
+
+def add_pv_charts(result):
+    if not result.get('success'):
+        return result
+
+    scenarios = result.get('scenarios') or []
+    if scenarios:
+        fig_scan = go.Figure()
+        fig_scan.add_bar(
+            name='NPV netto (zł)',
+            x=[f"{item['kwp']} kWp" for item in scenarios],
+            y=[item['npv_net'] for item in scenarios],
+            marker_color='#2E8B57',
+        )
+        fig_scan.add_scatter(
+            name='Autoconsumption %',
+            x=[f"{item['kwp']} kWp" for item in scenarios],
+            y=[item['autoconsumption_percent'] for item in scenarios],
+            yaxis='y2',
+            mode='lines+markers',
+            marker_color='#FF8C00',
+        )
+        fig_scan.update_layout(
+            title='Skan mocy instalacji',
+            yaxis_title='NPV netto (zł)',
+            yaxis2=dict(title='Autoconsumption %', overlaying='y', side='right', range=[0, 100]),
+            height=420,
+            legend=dict(orientation='h'),
+        )
+        result.setdefault('charts', {})['power_scan'] = fig_scan.to_dict()
+
+    recommended = result.get('recommended') or {}
+    profile = recommended.get('hourly_profile') or []
+    if profile:
+        fig_hourly = go.Figure()
+        fig_hourly.add_bar(
+            name='Zużycie',
+            x=[row['hour'] for row in profile],
+            y=[row['usage_kwh'] for row in profile],
+            marker_color='#4682B4',
+        )
+        fig_hourly.add_scatter(
+            name='Produkcja PV',
+            x=[row['hour'] for row in profile],
+            y=[row['production_kwh'] for row in profile],
+            mode='lines+markers',
+            marker_color='#F4A460',
+        )
+        fig_hourly.add_scatter(
+            name='Autoconsumption',
+            x=[row['hour'] for row in profile],
+            y=[row['autoconsumed_kwh'] for row in profile],
+            mode='lines+markers',
+            marker_color='#2E8B57',
+        )
+        fig_hourly.update_layout(
+            title=f"Profil dobowy (rekomendacja {recommended.get('kwp')} kWp)",
+            xaxis_title='Godzina',
+            yaxis_title='kWh',
+            height=420,
+            legend=dict(orientation='h'),
+        )
+        result.setdefault('charts', {})['hourly_match'] = fig_hourly.to_dict()
+
+    return result
 
 @app.route('/api/tariffs', methods=['GET', 'POST'])
 def api_tariffs():

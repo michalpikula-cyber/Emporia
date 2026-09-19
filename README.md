@@ -44,3 +44,27 @@ python battery_simulator.py uploads/emporia_history.csv --start-date 2025-09-01 
 ```
 
 Moduł pokazuje koszt bez magazynu, koszt z magazynem, oszczędność, energię przesuniętą, liczbę cykli i końcowy poziom naładowania. Koszt inwestycji, degradację baterii i końcowy SOC należy interpretować osobno; wynik jest symulacją, nie ofertą instalatora.
+
+Tryb PV (ładowanie z nadwyżki produkcji) wymaga CSV z kolumną `production_kwh`:
+
+```powershell
+python battery_simulator.py uploads/emporia_history.csv --pv-production-csv production.csv --export-price 0.25
+```
+
+## Zasadność fotowoltaiki
+
+Moduł PV (`/pv`, `pv_feasibility.py`) łączy godzinowe zużycie Emporia z produkcją z PVGIS:
+
+1. Ustaw lokalizację, nachylenie, azymut (0 = południe), straty, **koszt PV (zł/kWp)**, **koszt magazynu (stała kwota zł)** i cenę eksportu w `pv_config.json` lub w formularzu.
+2. Otwórz <http://127.0.0.1:5000/pv> i uruchom analizę (wymaga wcześniej zsynchronizowanej historii Emporia).
+3. Wynik pokazuje autoconsumption, wartość eksportu, payback, NPV oraz rekomendowaną moc z listy scenariuszy kWp.
+
+Całkowity CAPEX = `(zł/kWp × moc PV) + koszt magazynu` (magazyn tylko gdy włączony). Brutto inwestycji liczone jest z **VAT 8%** (preferencyjna stawka na montaż domowy). Oszczędności na rachunku nadal przeliczane są z **VAT 23%** (energia).
+
+CLI:
+
+```powershell
+python pv_feasibility.py uploads/emporia_history.csv --kwp 5,8,10 --tariff G11
+```
+
+Produkcja godzinowa jest cache'owana w `uploads/pvgis_cache/`. Gdy PVGIS jest niedostępne, używany jest awaryjny profil klimatyczny PL.
